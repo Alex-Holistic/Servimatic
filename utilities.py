@@ -62,11 +62,11 @@ class EDAinicial:
         self.df = self.df[self.df['MensajeTipoID'] == 25] # només missatges que contenen PartAccount
                       
         part_account_df = pd.json_normalize(self.df['Missatge_json'].apply(lambda x: x['PartAccount'] if isinstance(x, dict) and 'PartAccount' in x else {}))
-        self.df = pd.concat([self.df[['Maquina', 'FechaModificacion', 'FechaMensaje']].reset_index(drop=True), part_account_df.reset_index(drop=True)], axis=1)
+        self.df = pd.concat([self.df[['ID', 'Maquina', 'FechaModificacion', 'FechaMensaje']].reset_index(drop=True), part_account_df.reset_index(drop=True)], axis=1)
         
         self.df['FechaMensaje'] = pd.to_datetime(self.df['FechaMensaje'], errors='coerce')
         self.df = self.df.sort_values(by='FechaMensaje')
-        self.df.reset_index(drop=True, inplace=True)
+        self.df.reset_index(inplace=True, drop =True)
         
         self.df['Beneficis']= self.df['Bet'] - self.df['Win']
         self.df['Credits']= self.df['CreditsIn'] - self.df['CreditsOut']
@@ -125,7 +125,7 @@ class EDAinicial:
         ax1.set_xlabel('FechaMensaje')
         ax1.legend(title='Variables')
         ax1.grid()
-        "blabla"
+        
 
         # Segon subplot: evolució al llarg dels moviments
         ax2.plot(self.df.index, self.df['Beneficis'], label='Beneficis (Bet - Win)', color='blue')
@@ -267,3 +267,93 @@ class AnalitzadorEstructuresJSON:
             print("Exemple de input correcte: '7PO2.2034.25'")
 
         
+
+# -----------------------------------------------------------------------------------
+
+# Funció per afegir data als fitxers amb Missatges per màquina
+
+
+import os
+import csv
+from tqdm import tqdm
+
+
+def clean_csv_raw_Mensajes(n):
+    full_dataset_path = os.path.join(os.path.dirname(os.getcwd()), 'data','MensajesRAW', f'Mensajes_{n}.csv')
+    columns = [
+        "ID", "MsgID", "FechaMensaje", "ReqID", "SgID", "Maquina", "SGVer",
+        "ConexionTipoID", "MensajeTipoID", "Mensaje", "FechaModificacion", "UsuarioModificacion"
+    ]
+    full_df= pd.read_csv(full_dataset_path, sep=';', names = columns, header=None)
+    full_df.to_csv(os.path.join(os.path.dirname(os.getcwd()), 'data', f'master_mensajes_{n}.csv'), index=False)
+
+
+def split_csv_by_machine_buffered(input_file_path, buffer_size=500):
+    columns = [
+    "ID", "MsgID", "FechaMensaje", "ReqID", "SgID", "Maquina", "SGVer",
+    "ConexionTipoID", "MensajeTipoID", "Mensaje", "FechaModificacion", "UsuarioModificacion"
+    ]
+    output_dir = os.path.join(os.path.dirname(input_file_path), 'Missatges_x_maquina')
+    os.makedirs(output_dir, exist_ok=True)
+
+    buffers = {}  # {machine_id: [rows]}
+
+    def flush_buffer(machine_id):
+        """Write buffered rows to the corresponding file and clear buffer."""
+        machine_file_path = os.path.join(output_dir, f'{machine_id}.csv')
+        existing_ids = set()
+
+        # Load existing IDs if file exists
+        if os.path.exists(machine_file_path):
+            with open(machine_file_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                next(reader, None)  # skip header
+                for r in reader:
+                    if r:
+                        existing_ids.add(r[0])  # assuming first column is ID
+
+        # Filter out duplicates
+        new_rows = [row for row in buffers[machine_id] if row[0] not in existing_ids]
+
+        if not new_rows:
+            buffers[machine_id] = []
+            return
+
+        write_header = not os.path.exists(machine_file_path)
+        with open(machine_file_path, 'a', encoding='utf-8', newline='') as outfile:
+            writer = csv.writer(outfile, delimiter=',')
+            if write_header:
+                writer.writerow(columns)
+            writer.writerows(new_rows)
+
+        buffers[machine_id] = []
+
+    # Count total lines for progress bar
+    total_lines = sum(1 for _ in open(input_file_path, 'r', encoding='utf-8', errors='ignore')) - 1  # minus header
+
+    with open(input_file_path, 'r', encoding='utf-8', errors='ignore') as infile:
+        reader = csv.reader(infile, delimiter=',')
+        next(reader, None)  # Skip header row
+
+        for row in tqdm(reader, total=total_lines, desc="Processing rows"):
+            if len(row) < 6:
+                continue
+            machine_id = row[5].strip()
+            if not machine_id:
+                continue
+
+            if machine_id not in buffers:
+                buffers[machine_id] = []
+
+            buffers[machine_id].append(row)
+
+            # Flush buffer if it reaches buffer_size
+            if len(buffers[machine_id]) >= buffer_size:
+                flush_buffer(machine_id)
+
+    # Flush remaining buffers
+    for machine_id in buffers:
+        if buffers[machine_id]:
+            flush_buffer(machine_id)
+
+    print("✅ Split completed successfully!")
