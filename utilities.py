@@ -285,15 +285,15 @@ def clean_csv_raw_Mensajes(n):
         "ConexionTipoID", "MensajeTipoID", "Mensaje", "FechaModificacion", "UsuarioModificacion"
     ]
     full_df= pd.read_csv(full_dataset_path, sep=';', names = columns, header=None)
-    full_df.to_csv(os.path.join(os.path.dirname(os.getcwd()), 'data', f'master_mensajes_{n}.csv'), index=False)
-
+    full_df.to_csv(full_dataset_path, index=False)
+    return full_dataset_path
 
 def split_csv_by_machine_buffered(input_file_path, buffer_size=500):
     columns = [
     "ID", "MsgID", "FechaMensaje", "ReqID", "SgID", "Maquina", "SGVer",
     "ConexionTipoID", "MensajeTipoID", "Mensaje", "FechaModificacion", "UsuarioModificacion"
     ]
-    output_dir = os.path.join(os.path.dirname(input_file_path), 'Missatges_x_maquina')
+    output_dir = os.path.join(os.path.dirname(os.path.dirname(input_file_path)), 'Missatges_x_maquina')
     os.makedirs(output_dir, exist_ok=True)
 
     buffers = {}  # {machine_id: [rows]}
